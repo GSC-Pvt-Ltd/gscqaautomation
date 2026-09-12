@@ -19,6 +19,13 @@ REPORT_DIR = Path(os.environ.get("REPORT_DIR", "/reports"))
 #   never     no recording at all
 KEEP_VIDEO = os.environ.get("QA_KEEP_VIDEO", "failures").strip().lower()
 
+# Watching the run live:
+#   QA_HEADLESS=false   drive a real visible browser (needs a display — see
+#                       the VNC stack in the panel; DISPLAY must be set)
+#   QA_SLOWMO=500       pause 500ms between actions so a human can follow
+HEADLESS = os.environ.get("QA_HEADLESS", "true").strip().lower() != "false"
+SLOWMO = float(os.environ.get("QA_SLOWMO", "0") or 0)
+
 
 def env(key, default=None, required=False):
     val = os.environ.get(key, default)
@@ -64,6 +71,12 @@ def pytest_collection_modifyitems(config, items):
 # --------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
+def run_tag():
+    """Prefix for every record a test creates, so stray data is identifiable."""
+    return "QA-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+
+
+@pytest.fixture(scope="session")
 def rpc(config):
     client = OdooRPC(config["url"], config["db"], config["user"], config["password"])
     client.authenticate()
@@ -73,7 +86,14 @@ def rpc(config):
 @pytest.fixture(scope="session")
 def browser():
     with sync_playwright() as pw:
-        b = pw.chromium.launch(headless=True)
+        b = pw.chromium.launch(
+            headless=HEADLESS,
+            slow_mo=SLOWMO,
+            args=["--start-maximized"] if not HEADLESS else [],
+        )
+        if not HEADLESS:
+            print(f">> headed mode on DISPLAY={os.environ.get('DISPLAY', '(unset)')}, "
+                  f"slow_mo={SLOWMO}ms")
         yield b
         b.close()
 
