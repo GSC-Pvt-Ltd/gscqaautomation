@@ -12,6 +12,12 @@ from odoo_rpc import OdooRPC
 from reporting import write_report
 
 REPORT_DIR = Path(os.environ.get("REPORT_DIR", "/reports"))
+ENV_NAME = os.environ.get("QA_ENV_NAME", "unknown")
+
+# Every run writes into its own folder so history is never overwritten.
+# entrypoint.sh exports QA_RUN_ID so the shell and python agree on the name.
+RUN_ID = os.environ.get("QA_RUN_ID") or datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
+RUN_DIR = REPORT_DIR / ENV_NAME / "runs" / RUN_ID
 
 # When to keep the screen recording of a test:
 #   always    every test, passing or not  (useful while learning the tool)
@@ -72,8 +78,12 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(scope="session")
 def run_tag():
-    """Prefix for every record a test creates, so stray data is identifiable."""
-    return "QA-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    """Prefix for every record a test creates, so stray data is identifiable.
+
+    Deliberately the same id as the report folder: a leftover record in Odoo
+    names the run that created it.
+    """
+    return f"QA-{RUN_ID}"
 
 
 @pytest.fixture(scope="session")
@@ -134,7 +144,7 @@ def _slug(nodeid):
 def page(request, browser, config, auth_state):
     """A logged-in page. On failure it leaves a screenshot, video and trace."""
     slug = _slug(request.node.nodeid)
-    artifacts = REPORT_DIR / config["name"] / "artifacts"
+    artifacts = RUN_DIR / "artifacts"
     video_tmp = artifacts / "_video_tmp" / slug
 
     ctx = browser.new_context(
@@ -271,7 +281,8 @@ def pytest_sessionfinish(session, exitstatus):
     started = getattr(session, "_qa_started", time.time())
     finished = time.time()
     meta = {
-        "env": os.environ.get("QA_ENV_NAME", "unknown"),
+        "run_id": RUN_ID,
+        "env": ENV_NAME,
         "url": os.environ.get("ODOO_URL", ""),
         "db": os.environ.get("ODOO_DB", ""),
         "build": os.environ.get("QA_BUILD", datetime.now(timezone.utc).strftime("%Y.%m.%d-%H%M")),
@@ -281,11 +292,12 @@ def pytest_sessionfinish(session, exitstatus):
         "exit_status": exitstatus,
     }
 
-    out = REPORT_DIR / meta["env"]
+    name = f"report-{ENV_NAME}-{RUN_ID}.xlsx"
     try:
-        out.mkdir(parents=True, exist_ok=True)
-        (out / "results.json").write_text(json.dumps({"meta": meta, "results": results}, indent=2))
-        write_report(results, meta, str(out / f"report-{meta['env']}.xlsx"))
-        print(f"\n>> report written to {out}/report-{meta['env']}.xlsx")
+        RUN_DIR.mkdir(parents=True, exist_ok=True)
+        (RUN_DIR / "results.json").write_text(
+            json.dumps({"meta": meta, "results": results}, indent=2))
+        write_report(results, meta, str(RUN_DIR / name))
+        print(f"\n>> report written to {RUN_DIR}/{name}")
     except Exception as exc:          # never fail a run because reporting broke
         print(f"\n!! could not write report: {exc}")

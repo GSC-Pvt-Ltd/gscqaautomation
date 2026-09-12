@@ -63,6 +63,7 @@ def write_report(results, meta, path):
     rate = f"{(passed / total * 100):.1f}%" if total else "n/a"
 
     rows = [
+        ("Run", meta.get("run_id", "")),
         ("Environment", meta.get("env", "")),
         ("Target", meta.get("url", "")),
         ("Database", meta.get("db", "")),
