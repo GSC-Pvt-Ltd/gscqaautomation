@@ -13,6 +13,12 @@ from reporting import write_report
 
 REPORT_DIR = Path(os.environ.get("REPORT_DIR", "/reports"))
 
+# When to keep the screen recording of a test:
+#   always    every test, passing or not  (useful while learning the tool)
+#   failures  only when a test fails      (the default once you trust it)
+#   never     no recording at all
+KEEP_VIDEO = os.environ.get("QA_KEEP_VIDEO", "failures").strip().lower()
+
 
 def env(key, default=None, required=False):
     val = os.environ.get(key, default)
@@ -116,7 +122,7 @@ def page(request, browser, config, auth_state):
         storage_state=auth_state,
         ignore_https_errors=True,
         viewport={"width": 1440, "height": 900},
-        record_video_dir=str(video_tmp),
+        record_video_dir=None if KEEP_VIDEO == "never" else str(video_tmp),
     )
     ctx.tracing.start(screenshots=True, snapshots=True, sources=True)
 
@@ -148,9 +154,11 @@ def page(request, browser, config, auth_state):
     # video.save_as() blocks until the file is actually written, which
     # ctx.close() alone does not guarantee. video.delete() then removes the
     # original, so passing tests leave nothing behind.
+    keep_video = KEEP_VIDEO == "always" or (failed and KEEP_VIDEO != "never")
     if video is not None:
         try:
-            if failed:
+            if keep_video:
+                artifacts.mkdir(parents=True, exist_ok=True)
                 dest = artifacts / f"{slug}.webm"
                 video.save_as(str(dest))
                 evidence.append(dest.name)
