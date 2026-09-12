@@ -109,19 +109,20 @@ def page(request, browser, config, auth_state):
     """A logged-in page. On failure it leaves a screenshot, video and trace."""
     slug = _slug(request.node.nodeid)
     artifacts = REPORT_DIR / config["name"] / "artifacts"
-    video_dir = artifacts / "video" / slug
+    video_tmp = artifacts / "_video_tmp" / slug
 
     ctx = browser.new_context(
         base_url=config["url"],
         storage_state=auth_state,
         ignore_https_errors=True,
         viewport={"width": 1440, "height": 900},
-        record_video_dir=str(video_dir),
+        record_video_dir=str(video_tmp),
     )
     ctx.tracing.start(screenshots=True, snapshots=True, sources=True)
 
     pg = ctx.new_page()
     pg.set_default_timeout(15000)
+    video = pg.video          # grab the handle while the page still exists
     yield pg
 
     report = getattr(request.node, "rep_call", None) or getattr(request.node, "rep_setup", None)
@@ -142,22 +143,26 @@ def page(request, browser, config, auth_state):
     else:
         ctx.tracing.stop()
 
-    ctx.close()  # video is only written on close
+    ctx.close()               # the video is finalised during close
 
-    if failed:
+    # video.save_as() blocks until the file is actually written, which
+    # ctx.close() alone does not guarantee. video.delete() then removes the
+    # original, so passing tests leave nothing behind.
+    if video is not None:
         try:
-            for f in video_dir.glob("*.webm"):
-                evidence.append(f"video/{slug}/{f.name}")
+            if failed:
+                dest = artifacts / f"{slug}.webm"
+                video.save_as(str(dest))
+                evidence.append(dest.name)
+            video.delete()
         except Exception:
             pass
-    else:
-        # keep the volume small: discard video for passing tests
-        try:
-            for f in video_dir.glob("*"):
-                f.unlink()
-            video_dir.rmdir()
-        except Exception:
-            pass
+
+    try:
+        video_tmp.rmdir()
+        video_tmp.parent.rmdir()      # removes _video_tmp once it is empty
+    except OSError:
+        pass                          # not empty, or already gone
 
     request.node._qa_evidence = ", ".join(evidence)
 
