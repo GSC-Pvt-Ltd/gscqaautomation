@@ -62,10 +62,22 @@ def auth_state(browser, config, tmp_path_factory):
     ctx = browser.new_context(base_url=config["url"], ignore_https_errors=True)
     page = ctx.new_page()
     page.goto("/web/login")
-    page.fill("input[name='login']", config["user"])
-    page.fill("input[name='password']", config["password"])
-    page.click("button[type='submit']")
-    page.wait_for_url("**/odoo**", timeout=30000)
+
+    # Scope to the form holding the login field. The website module adds a
+    # header with its own submit button, so a bare button[type=submit] is
+    # ambiguous and matches the wrong one.
+    form = page.locator("form:has(input[name='login'])")
+    form.locator("input[name='login']").fill(config["user"])
+    form.locator("input[name='password']").fill(config["password"])
+    form.locator("button[type='submit']").click()
+
+    try:
+        page.wait_for_selector(".o_main_navbar", timeout=30000)
+    except Exception:
+        alert = page.locator(".alert-danger")
+        detail = alert.first.inner_text().strip() if alert.count() else f"still at {page.url}"
+        raise RuntimeError(f"login did not reach the backend: {detail}")
+
     ctx.storage_state(path=str(path))
     ctx.close()
     return str(path)
