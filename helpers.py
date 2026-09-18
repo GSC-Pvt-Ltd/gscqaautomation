@@ -34,3 +34,34 @@ def select_dropdown(page, form, name, value):
     page.wait_for_selector(".o-autocomplete--dropdown-menu", timeout=10000)
     page.locator(".o-autocomplete--dropdown-item").first.click()
     return box
+
+
+def odoo_message(page):
+    """Return any visible Odoo notification or validation text, or ''.
+
+    A failed save in Odoo is usually announced in a toast or an inline
+    invalid-field marker. Without this, a test that does not save reports
+    "no record found" — the symptom — instead of what Odoo actually said.
+    """
+    parts = []
+    for sel in (".o_notification_content", ".o_notification .o_notification_body",
+                ".alert-danger", ".o_form_status_indicator_buttons",
+                ".o_field_invalid", ".o_error_dialog .modal-body"):
+        loc = page.locator(sel)
+        try:
+            for i in range(min(loc.count(), 3)):
+                text = loc.nth(i).inner_text().strip()
+                if text:
+                    parts.append(text.replace("\n", " ")[:200])
+        except Exception:
+            continue
+    # which fields Odoo marked invalid, if any
+    try:
+        invalid = page.locator("[name].o_field_invalid, .o_field_invalid[name]")
+        names = [invalid.nth(i).get_attribute("name") for i in range(min(invalid.count(), 5))]
+        names = [n for n in names if n]
+        if names:
+            parts.append("invalid fields: " + ", ".join(names))
+    except Exception:
+        pass
+    return " | ".join(dict.fromkeys(parts))

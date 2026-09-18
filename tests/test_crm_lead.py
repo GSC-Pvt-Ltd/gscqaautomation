@@ -5,7 +5,7 @@ That is what keeps it from ever running against production.
 """
 import pytest
 
-from helpers import fill_field, wait_for_record
+from helpers import fill_field, odoo_message, wait_for_record
 
 pytestmark = [pytest.mark.smoke, pytest.mark.write]
 
@@ -56,7 +56,16 @@ def test_create_lead_through_the_form(page, rpc, run_tag, crm_installed, lead_cl
         rpc, MODEL, [("name", "=", name)],
         fields=["id", "name", "expected_revenue", "email_from", "type"],
     )
-    assert rows, f"no {MODEL} named {name!r} was saved"
+    if not rows:
+        # say what Odoo said, not just that nothing turned up
+        said = odoo_message(page)
+        near = rpc.search_read(MODEL, [("name", "like", run_tag)], ["id", "name"], limit=5)
+        raise AssertionError(
+            f"no {MODEL} named {name!r} was saved.\n"
+            f"  odoo said: {said or '(nothing visible)'}\n"
+            f"  url now:   {page.url}\n"
+            f"  leads with this run tag: {near or 'none'}"
+        )
     lead_cleanup.extend(r["id"] for r in rows)
 
     assert len(rows) == 1, f"expected one lead, found {len(rows)}"
