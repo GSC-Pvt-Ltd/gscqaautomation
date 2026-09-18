@@ -53,7 +53,9 @@ if [ "$MODE" = "record" ]; then
   export QA_HEADLESS
   start_display
   echo ">> starting recorder"
-  python3 record.py
+  # -u: unbuffered, so the banner and the "draft saved" line appear in the
+  # panel logs as they happen rather than all at once when the process ends
+  python3 -u record.py
   echo ">> recorder finished. Screen stays up for ${QA_WATCH_LINGER:-120}s."
   sleep "${QA_WATCH_LINGER:-120}"
   exit 0
@@ -62,7 +64,7 @@ fi
 if [ "$MODE" = "worker" ]; then
   start_display
   echo ">> starting queue worker"
-  exec python3 worker.py
+  exec python3 -u worker.py
 fi
 
 # ---- one-shot mode -------------------------------------------------------
