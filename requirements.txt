@@ -1,3 +1,8 @@
+# playwright MUST match the image tag in the compose file
+# (mcr.microsoft.com/playwright/python:v1.62.0-noble).
+# The image ships browsers at a version-specific path; an unpinned install
+# pulls a newer playwright that looks for browsers that are not there.
+playwright==1.62.0
 pytest==8.3.4
 pytest-playwright==0.6.2
 openpyxl==3.1.5
